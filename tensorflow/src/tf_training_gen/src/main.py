@@ -10,7 +10,7 @@ import cv2
 bridge = CvBridge()
 
 frame_count = 0
-status = ''
+status = ColorRGBA(0,0,0,0)
 
 def imageCallback(msg):
     global frame_count
@@ -30,7 +30,7 @@ def imageCallback(msg):
     else:
         print status
         # Save your OpenCV2 image as a jpeg
-        cv2.imwrite(str(time.time())+'_'+str(status)+'.jpeg', cv2_img)
+        cv2.imwrite(str(time.time())+'_'+str(status.r)+'_'+str(status.g)+'.jpeg', cv2_img)
 
 def controlCallback(msg):
     global status
@@ -45,7 +45,7 @@ def controlCallback(msg):
 
 def main():
     rospy.init_node('tf_training')
-    #camSub = rospy.Subscriber("/camera/rgb/image_mono", Image, imageCallback)
+    camSub = rospy.Subscriber("/camera/rgb/image_mono", Image, imageCallback)
     controlSub = rospy.Subscriber("robot_base_state", String, controlCallback)
     print 'test'
     rospy.spin()
