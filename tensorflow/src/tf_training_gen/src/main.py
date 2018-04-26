@@ -3,7 +3,7 @@
 import rospy
 import time
 from sensor_msgs.msg import Image
-from std_msgs.msg import String
+from std_msgs.msg import String, ColorRGBA
 from cv_bridge import CvBridge, CvBridgeError
 import cv2
 
@@ -34,14 +34,21 @@ def imageCallback(msg):
 
 def controlCallback(msg):
     global status
-    status = msg.data
+    msg_split = msg.data.split(',');
+    steering = float(msg_split[0])
+    throttle = float(msg_split[1])
+    max_throttle = int(msg_split[2])
+    steering = (steering - 1500.0) / 500.0
+    throttle = (throttle - 1500.0) / max_throttle
+    status = ColorRGBA(steering, throttle, 0, 0)
+    print status
 
 def main():
     rospy.init_node('tf_training')
-    camSub = rospy.Subscriber("/camera/rgb/image_mono", Image, imageCallback)
+    #camSub = rospy.Subscriber("/camera/rgb/image_mono", Image, imageCallback)
     controlSub = rospy.Subscriber("robot_base_state", String, controlCallback)
     print 'test'
     rospy.spin()
 
 if __name__ == '__main__':
-	main()
+    main()
