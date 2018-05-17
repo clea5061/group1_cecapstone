@@ -8,6 +8,7 @@ using namespace std;
 
 double steering_input;
 double throttle_input;
+double cnn_input;
 
 const char* err_mesgs[] = {
     "No route to requested IP address",
@@ -55,6 +56,7 @@ void base_control_listener(const std_msgs::ColorRGBA& throttle_steer)
 {
     throttle_input = (double)throttle_steer.r;
     steering_input = (double)throttle_steer.g;
+    cnn_input = (double)throttle_steer.a;
 }
 
 void* ctl_loop(void* rover_ptr)
@@ -64,6 +66,8 @@ void* ctl_loop(void* rover_ptr)
     pthread_rwlock_rdlock(&rover->rc_semaphore);
     bool running = rover->running;
     pthread_rwlock_unlock(&rover->rc_semaphore);
+	ros::Publisher tf_publisher = rover->rosnode.advertise<std_msgs::Bool>("tensor_flow_training", 4);
+	ros::Publisher cnn_publisher = rover->rosnode.advertise<std_msgs::Bool>("neural_link", 4);
 
     short steering_angle = 1500;
     short drive_power = 1500;
@@ -76,7 +80,11 @@ void* ctl_loop(void* rover_ptr)
 
     bool speed_limit_up = false;
     bool speed_limit_down = false;
+	bool tf_training_toggle = false;
+	bool tf_training_state = false;
     double throttle_max = 100;
+    double r_trigger = 0.0D;
+    double l_trigger = 0.0D;
 
     while (running)
     {
@@ -96,9 +104,20 @@ void* ctl_loop(void* rover_ptr)
             if (throttle_max < 500.0)
             {
                 rover->throttle_trim = throttle_max;
-                throttle_max += 25;
+                throttle_max += 12.5;
             }
         }
+
+	if (gamepad_state.button[X_BTN])
+	{
+		tf_training_toggle = true;
+	} else if (tf_training_toggle) {
+		tf_training_toggle = false;
+		tf_training_state = !tf_training_state;
+		std_msgs::Bool mesg;
+       		mesg.data = tf_training_state;
+		tf_publisher.publish(mesg);
+	}
 
         // if throttle limit down button bumped
         if (gamepad_state.button[LB_BTN])
@@ -111,7 +130,7 @@ void* ctl_loop(void* rover_ptr)
             if (throttle_max > 0.0)
             {
                 rover->throttle_trim = throttle_max;
-                throttle_max -= 25;
+                throttle_max -= 12.5;
             }
         }
 
@@ -120,12 +139,18 @@ void* ctl_loop(void* rover_ptr)
         {
             estop_expire = update_div + 100; // cut input for roughly 1 second
             rover->autonomous = false;
+		std_msgs::Bool mesg;
+       		mesg.data = rover->autonomous;
+		cnn_publisher.publish(mesg);
         }
 
         // if user wanted car to go into autonomous mode
         if (gamepad_state.button[START_BTN] && gamepad_state.button[BACK_BTN] && !rover->autonomous)
         {
             rover->autonomous = true;
+		std_msgs::Bool mesg;
+		mesg.data = rover->autonomous;
+		cnn_publisher.publish(mesg);
         }
 
         steering_angle = 1500;
@@ -135,7 +160,11 @@ void* ctl_loop(void* rover_ptr)
         {
             double throttle_val = 0.0;
             double steering_val = 0.0;
-
+	        double net_throttle = 0.0;
+	        r_trigger = (gamepad_state.axis_rt + 1.0d) / 2.0D; //Forward, default state is -1.00
+	        l_trigger = (gamepad_state.axis_lt + 1.0d) / 2.0D; // Reverse, default state is -1
+		
+	        net_throttle = r_trigger-l_trigger;
             if (abs(gamepad_state.axis_lx) > 0.2)
             {
                 steering_val = gamepad_state.axis_lx;
@@ -149,10 +178,11 @@ void* ctl_loop(void* rover_ptr)
                     steering_val = (steering_val - 0.2) / 0.8;
                 }
             }
+	
 
-            if (abs(gamepad_state.axis_ry) > 0.3)
+            if (abs(net_throttle) > 0.3)
             {
-                throttle_val = -gamepad_state.axis_ry;
+                throttle_val = net_throttle;
 
                 if (throttle_val < 0)
                 {
@@ -166,7 +196,9 @@ void* ctl_loop(void* rover_ptr)
 
             if (rover->autonomous)
             {
-                throttle_val = throttle_input;
+		if(cnn_input < 0.1) {
+                    throttle_val = throttle_input;
+		}
                 steering_val = steering_input;
             }
 
