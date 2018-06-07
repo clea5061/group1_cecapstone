@@ -27,7 +27,7 @@ sess2= None
 camera_model= None
 lidar_model= None
 neural_link = False
-lidar_weight_max = .8	#change this to manipulate how much lidar/camera influence driving (0-1)
+lidar_weight_max = 1.5	#change this to manipulate how much lidar/camera influence driving (0-1)
 lidar_update_freq = 400.0 	#corresponds to lidar @5Hz*2
 last_lidar = None
 lidar_lock = Lock()
@@ -57,11 +57,14 @@ def createVehicleRequest(throttle):
     global camera_steer
     with lidar_lock:
         lidar_weight = lidar_weight_max - (rospy.get_rostime()-last_lidar).to_nsec()/1000000.0/lidar_update_freq  #Times arent right, but data types work
-        camera_weight = 1 - lidar_weight
+        camera_weight = 0.3
         print "L: "+str(lidar_weight)
         print "C: "+ str(camera_weight)
         with camera_lock:
-                steer = camera_steer*camera_weight + lidar_steer*lidar_weight
+            print "L: "+str(lidar_steer)
+            print "C: "+ str(camera_steer)
+            steer = (camera_steer*camera_weight + lidar_steer*lidar_weight)/(camera_weight+lidar_weight)
+    print str(steer)
     vehMsg.r = throttle
     vehMsg.g = steer
     vehMsg.a = 1.0 # A as 1 indicates CNN
